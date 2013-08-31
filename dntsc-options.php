@@ -189,6 +189,8 @@ function dntsc_check_avatar_url( $url ) {
         return '';
     }
 
+    if ( $url[0] == '/' ) { $url = home_url() . $url; }
+
     $test_string = bin2hex( openssl_random_pseudo_bytes( 16 ) );
     $test_subdir = substr( $test_string, 0, 2 );
 
@@ -241,7 +243,9 @@ function dntsc_setting_avatar_url() {
         type="text" size="80" maxlength="254"
         value="<?php echo $dntsc_options['avatar_url']; ?>" />
     <p class="description">
-        URL corresponding to the avatar directory or folder above.
+        URL path or full URL corresponding to the avatar directory or folder
+        above.  Use just a URL path if possible to ensure that avatar images
+        are fetched using the same protocol as the article or page.
     </p>
 <?php
     $message = dntsc_check_avatar_url( $dntsc_options['avatar_url'] );
@@ -485,9 +489,14 @@ function dntsc_options_validate( $input ) {
             // This plugin relies on the avatar URL ending with a /
             $input['avatar_url'] .= '/';
         }
+        // Accept either a full URL or a URL path.  A URL path can be used
+        // to fetch the avatar image via the same protocol (HTTP or HTTPS)
+        // via which the page was fetched.
         if ( filter_var( $input['avatar_url'], FILTER_VALIDATE_URL ) !== FALSE
             && ( substr( $input['avatar_url'], 0, 7 ) == 'http://' ||
                 substr( $input['avatar_url'], 0, 8 ) == 'https://' ) ) {
+            $new_options['avatar_url'] = $input['avatar_url'];
+        } else if ( $input['avatar_url'][0] == '/' ) {
             $new_options['avatar_url'] = $input['avatar_url'];
         } else {
             add_settings_error( 'dntsc_options', 'settings_updated',
