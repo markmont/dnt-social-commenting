@@ -94,7 +94,7 @@ No, only the privacy of people who read the comments is protected.  Currently, s
 1. Sign-in buttons (when "Require Sign-in" is checked on the Settings page).
 2. Comment form, after sign-in (when "Require Sign-in" is checked on the Settings page).
 3. Settings.
-3. Advanced Settings.
+4. Advanced Settings.
 
 == Changelog ==
 
