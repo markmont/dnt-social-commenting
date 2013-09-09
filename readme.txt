@@ -33,6 +33,8 @@ DNT Social Commenting **__does not support sharing buttons__** (such as "Like" o
 
 == Installation ==
 
+The DNT Social Commenting plugin requires the [PHP PECL ImageMagic](http://php.net/manual/en/book.imagick.php) extension.  Check the output of `phpinfo();` to ensure that your PHP has ImageMagick installed and enabled.
+
 1. Extract and upload the `dnt-social-commenting` folder to the `/wp-content/plugins/` directory
 2. Activate the plugin through the 'Plugins' menu in the WordPress admin panel
 3. Configure the plugin through the 'Settings' menu in the WordPress admin panel.  You will need to create an "app" with each social media provider you want users to be able to sign in with, and enter the app's Id (or Key) and Secret on the Plugin's Settings page.  Most social media providers require you to specify a callback URL when you create an app -- you can get the callback URL from the "Advanced" section at the bottom of the plugin's Settings page.

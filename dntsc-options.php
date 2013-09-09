@@ -68,6 +68,16 @@ function dntsc_options_page() {
 <div class="wrap">
     <?php screen_icon(); ?>
     <h2>DNT Social Commenting</h2>
+<?php
+
+    if ( ! @class_exists( Imagick ) ) {
+        add_settings_error( 'dntsc_options', 'imagick',
+            'You must install and enable the PHP PECL ImageMagick extension.',
+            'error' );
+        settings_errors( 'dntsc_options', false, true );
+    }
+
+?>
     <p>
         Allows users to authenticate via OAuth to social networking sites in
         order to leave WordPress comments.  Does not require the user to
