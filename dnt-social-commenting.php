@@ -86,8 +86,10 @@ function dntsc_message( $message ) {
     // Sanitize secrets so they do not appear in the logs:
     foreach ( $dntsc_service_name as $service => $service_name ) {
         $secret = $dntsc_options['service'][$service]['secret'];
-        $message = preg_replace( "/{$secret}/", "XXX{$service}-secretXXX",
-            $message );
+        if ( ! empty( $secret ) ) {
+            $message = preg_replace( "/{$secret}/", "XXX{$service}-secretXXX",
+                $message );
+        }
     }
 
     $info = "DNTSC ";

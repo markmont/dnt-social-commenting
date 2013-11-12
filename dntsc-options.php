@@ -521,19 +521,19 @@ function dntsc_options_validate( $input ) {
                 && $input['service'][$service]['enabled'] == 1 ) ? 1 : 0;
 
         $id = trim( $input['service'][$service]['id'] );
-        if ( preg_match( '/^[a-z0-9_.+@=-]{1,254}$/i', $id ) ) {
+        if ( preg_match( '/^[a-z0-9_.+@=-]{0,254}$/i', $id ) ) {
             $new_options['service'][$service]['id'] = $id;
         } else {
             add_settings_error( 'dntsc_options', 'settings_updated',
-                'Illegal characters in ${service_name} Id.', 'error' );
+                'Illegal characters in ${service_name} id.', 'error' );
         }
 
         $secret = trim( $input['service'][$service]['secret'] );
-        if ( preg_match( '/^[a-z0-9_.+@=-]{1,254}$/i', $secret ) ) {
+        if ( preg_match( '/^[a-z0-9_.+@=-]{0,254}$/i', $secret ) ) {
             $new_options['service'][$service]['secret'] = $secret;
         } else {
             add_settings_error( 'dntsc_options', 'settings_updated',
-                'Illegal characters in ${service_name} Id.', 'error' );
+                'Illegal characters in ${service_name} secret.', 'error' );
         }
 
     }
