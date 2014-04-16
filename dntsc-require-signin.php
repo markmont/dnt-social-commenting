@@ -99,7 +99,7 @@ function dntsc_end_comment_div() {
 
     global $dntsc_options;
 
-    if ( $dntsc_options['required'] ) {
+    if ( $dntsc_options['required'] && ! is_user_logged_in() ) {
         echo "\n</div><!-- dntsc-comment-fields -->\n";
     }
 
