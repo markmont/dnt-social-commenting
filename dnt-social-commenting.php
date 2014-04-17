@@ -10,7 +10,7 @@ License: GPL3
 
 /*
 
-Copyright 2013 Mark Montague, mark@catseye.org
+Copyright 2013-2014 Mark Montague, mark@catseye.org
 
 This file is part of DNT Social Commenting.
 

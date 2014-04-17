@@ -113,7 +113,7 @@ This plugin's oauth subdirectory contains PHP code from the [oauth](http://oauth
 
 The remainder of the DNT Social Commenting code is available under the following license:
 
-Copyright 2013 Mark Montague, mark@catseye.org
+Copyright 2013-2014 Mark Montague, mark@catseye.org
 
 DNT Social Commenting is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
