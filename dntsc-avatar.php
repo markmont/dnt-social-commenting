@@ -42,8 +42,8 @@ function dntsc_download_avatar_image( $userinfo ) {
     }
 
 
-    // Map email addresses to random strings so that people won't be
-    // able to match avatar image filenames to email addresses or
+    // Map URLs to random strings so that people won't be able to
+    // match avatar image filenames to email addresses or URLs or
     // use avatar image filenames to tie commentor identities across
     // multiple sites.
     $avatar_table = $wpdb->prefix . 'dntsc_avatar';
@@ -221,13 +221,14 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     global $wpdb;
     global $dntsc_options;
 
+    //dntsc_debug( "dntsc_get_avatar called: $avatar\n" . print_r( $id_or_email, TRUE ) );
+
     // If the core function determined that an avatar should not be
     // displayed for whatever reason, trust it.
     if ( $avatar === false ) { return $avatar; }
 
     // Don't do anything unless this is for a comment.
-    if ( ! is_object( $id_or_email ) || ! isset( $id_or_email->comment_ID )
-        || $id_or_email->user_id != 0 ) {
+    if ( ! is_object( $id_or_email ) || ! isset( $id_or_email->comment_ID ) ) {
         return $avatar;
     }
 
@@ -235,13 +236,38 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     $url = $id_or_email->comment_author_url;
     dntsc_debug( "finding avatar for ${url}" );
 
-    if ( ! preg_match( "/\/" . $dntsc_options['callback'] .
+    if ( preg_match( "/\/" . $dntsc_options['callback'] .
             "\/?\?step=profile&amp;id=([0-9a-f]+)$/",
             $url, $match ) ) {
-        dntsc_debug( 'URL did not contain local avatar id' );
-        return $avatar;
+        $local_avatar_id = $match[1];
+    } else {
+        dntsc_debug( 'URL did not contain local avatar id, checking database' );
+        $avatar_table = $wpdb->prefix . 'dntsc_avatar';
+        $local_avatar_id = $wpdb->get_var( $wpdb->prepare( "
+            SELECT local_avatar_id FROM $avatar_table
+            WHERE service_author_url = %s", $url ) );
+        if ( $local_avatar_id == NULL ) {
+            dntsc_debug( 'No local avatar id found, try to create one' );
+            $email = 'unknown@gravatar.com';
+            if ( ! empty( $id_or_email->comment_author_email ) ) {
+                $email = strtolower( trim( $id_or_email->comment_author_email ) );
+            }
+            $userinfo['dntsc_url'] = $url;
+            $userinfo['dntsc_email'] = $email;
+            $userinfo['dntsc_avatar_url'] =
+                'https://secure.gravatar.com/avatar/' .  md5( $email )
+                    . '?s=96&amp;d=mm';
+            $rating = get_option( 'avatar_rating' );
+            if ( ! empty( $rating ) ) {
+                $userinfo['dntsc_avatar_url'] .= "&amp;r={$rating}";
+            }
+            $new_url = dntsc_download_avatar_image( $userinfo );
+            if ( ! $new_url ) { return $avatar; }
+            dntsc_debug( "successfully created local id, returning avatar url {$new_url}" );
+            $avatar = "<img class='avatar avatar-{$size}' src='{$new_url}' width='{$size}' height='{$size}' style='width:($size}px;height:($size)px;' />";
+            return $avatar;
+        }
     }
-    $local_avatar_id = $match[1];
 
     $image_file = substr( $local_avatar_id, 0, 2 ) . '/'. $local_avatar_id;
 
