@@ -862,7 +862,7 @@ function dntsc_footer_script() {
     // string.  Make sure the string doesn't get terminated early with
     // an unescaped apostrophe, and that other variables have all been
     // escaped to protect against injection.
-    $user_info = "<div><span class=\"avatar\">$image</span><p>Hi, $name!  You are signed in via your $servicename account.  Your $servicename user information will be used for comment attribution. (<a href=\"$signout\">sign&nbsp;out</a>)</p></div><br />";
+    $user_info = "<div class=\"comment-notes-logged-in\"><span class=\"avatar\">$image</span><p>Hi, $name!  You are signed in via your $servicename account.  Your $servicename user information will be used for comment attribution.<br /><a class=\"btn btn-default btn-sm\" href=\"$signout\">Sign&nbsp;out</a></p></div><br />";
 
 
 ?>
