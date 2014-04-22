@@ -286,7 +286,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
 
     $image_url = $dntsc_options['avatar_url'] . $image_file;
     dntsc_debug( "returning avatar url {$image_url}" );
-    $avatar = "<img class='avatar avatar-{$size}' src='{$image_url}' width='{$size}' height='{$size}' style='width:($size}px;height:($size)px;' />";
+    $avatar = "<img class='avatar avatar-{$size}' src='{$image_url}' width='{$size}' height='{$size}' style='width:{$size}px;height:{$size}px;' />";
 
     return $avatar;
 
