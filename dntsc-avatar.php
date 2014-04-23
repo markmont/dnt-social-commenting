@@ -227,13 +227,38 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     // displayed for whatever reason, trust it.
     if ( $avatar === false ) { return $avatar; }
 
-    // Don't do anything unless this is for a comment.
-    if ( ! is_object( $id_or_email ) || ! isset( $id_or_email->comment_ID ) ) {
-        return $avatar;
+    $email = '';
+    $url = '';
+
+    if ( is_object( $id_or_email ) ) {
+        if ( ! empty( $id_or_email->comment_author_email ) ) {
+            $email = $id_or_email->comment_author_email;
+        }
+        if ( ! empty( $id_or_email->comment_author_url ) ) {
+            $url = $id_or_email->comment_author_url;
+        }
+    } elseif ( is_numeric($id_or_email) ) {
+        $id = (int) $id_or_email;
+        $user = get_userdata( $id );
+        if ( $user ) {
+            if ( ! empty( $user->user_email ) ) { $email = $user->user_email; }
+            if ( ! empty( $user->user_url ) ) { $url = $user->user_url; }
+        }
+    } elseif ( is_email( $id_or_email ) ) {
+        $email = $id_or_email;
     }
 
-    if ( empty( $id_or_email->comment_author_url ) ) { return $avatar; }
-    $url = $id_or_email->comment_author_url;
+    if ( ! $email ) { $email = 'unknown@gravatar.com'; }
+    $email = strtolower( trim( $email ) );
+
+    if ( ! $url ) {
+        if ( preg_match( '/\ssrc=["\']([^"\']+)["\']/', $avatar, $matches ) ) {
+            $url = $matches[1];
+        } else {
+            $url = '#';
+        }
+    }
+
     dntsc_debug( "finding avatar for ${url}" );
 
     if ( preg_match( "/\/" . $dntsc_options['callback'] .
@@ -248,10 +273,6 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
             WHERE service_author_url = %s", $url ) );
         if ( $local_avatar_id == NULL ) {
             dntsc_debug( 'No local avatar id found, try to create one' );
-            $email = 'unknown@gravatar.com';
-            if ( ! empty( $id_or_email->comment_author_email ) ) {
-                $email = strtolower( trim( $id_or_email->comment_author_email ) );
-            }
             $userinfo['dntsc_url'] = $url;
             $userinfo['dntsc_email'] = $email;
             $userinfo['dntsc_avatar_url'] =
@@ -264,7 +285,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
             $new_url = dntsc_download_avatar_image( $userinfo );
             if ( ! $new_url ) { return $avatar; }
             dntsc_debug( "successfully created local id, returning avatar url {$new_url}" );
-            $avatar = "<img class='avatar avatar-{$size}' src='{$new_url}' width='{$size}' height='{$size}' style='width:($size}px;height:($size)px;' />";
+            $avatar = "<img class='avatar avatar-{$size}' src='{$new_url}' width='{$size}' height='{$size}' style='width:{$size}px;height:{$size}px;' />";
             return $avatar;
         }
     }
