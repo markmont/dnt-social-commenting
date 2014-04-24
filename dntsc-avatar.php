@@ -221,7 +221,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     global $wpdb;
     global $dntsc_options;
 
-    //dntsc_debug( "dntsc_get_avatar called: $avatar\n" . print_r( $id_or_email, TRUE ) );
+    dntsc_debug( "dntsc_get_avatar called: avatar = $avatar\nid_or_email = " . print_r( $id_or_email, TRUE ) );
 
     // If the core function determined that an avatar should not be
     // displayed for whatever reason, trust it.
@@ -259,7 +259,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
         }
     }
 
-    dntsc_debug( "finding avatar for ${url}" );
+    dntsc_debug( "finding avatar for ${email}, ${url}" );
 
     if ( preg_match( "/\/" . $dntsc_options['callback'] .
             "\/?\?step=profile&amp;id=([0-9a-f]+)$/",
