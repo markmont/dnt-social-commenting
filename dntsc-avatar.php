@@ -54,9 +54,9 @@ function dntsc_download_avatar_image( $userinfo ) {
     if ( $local_avatar_id != NULL ) {
         $ok = $wpdb->update(
 	    $avatar_table,
-	    array( 'service_avatar_url' => $image_source ),
+	    array( 'service_avatar_url' => $image_source, 'email' => $userinfo['dntsc_email'] ),
 	    array( 'service_author_url' => $userinfo['dntsc_url'] ),
-	    array( '%s' ),
+	    array( '%s', '%s' ),
 	    array( '%s' )
         );
         // Note the update may not have resulted in the URL actually changing,
@@ -76,10 +76,11 @@ function dntsc_download_avatar_image( $userinfo ) {
             WHERE local_avatar_id = %s", $local_avatar_id ) );
         if ( $url == NULL ) {
             $ok = $wpdb->insert( $avatar_table,
-                array( 'service_author_url' => $userinfo['dntsc_url'],
+                array( 'email' => $userinfo['dntsc_email'],
+                    'service_author_url' => $userinfo['dntsc_url'],
                     'service_avatar_url' => $image_source,
                     'local_avatar_id' => $local_avatar_id ),
-                array( '%s', '%s', '%s' ) );
+                array( '%s', '%s', '%s', '%s' ) );
             if ( ! $ok ) {
                 dntsc_error( 'unable to insert into dntsc_avatar table' );
                 return '';
@@ -221,7 +222,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     global $wpdb;
     global $dntsc_options;
 
-    dntsc_debug( "dntsc_get_avatar called: avatar = $avatar\nid_or_email = " . print_r( $id_or_email, TRUE ) );
+    dntsc_debug( "dntsc_get_avatar() called: avatar = $avatar\nid_or_email = " . print_r( $id_or_email, TRUE ) );
 
     // If the core function determined that an avatar should not be
     // displayed for whatever reason, trust it.
@@ -229,6 +230,8 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
 
     $email = '';
     $url = '';
+    $local_avatar_id = '';
+    $avatar_table = $wpdb->prefix . 'dntsc_avatar';
 
     if ( is_object( $id_or_email ) ) {
         if ( ! empty( $id_or_email->comment_author_email ) ) {
@@ -248,26 +251,35 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
         $email = $id_or_email;
     }
 
-    if ( ! $email ) { $email = 'unknown@gravatar.com'; }
-    $email = strtolower( trim( $email ) );
-
-    if ( ! $url ) {
-        if ( preg_match( '/\ssrc=["\']([^"\']+)["\']/', $avatar, $matches ) ) {
-            $url = $matches[1];
-        } else {
-            $url = '#';
+    if ( $email ) {
+        $email = strtolower( trim( $email ) );
+        if ( ! $url ) {
+            $local_avatar_id = $wpdb->get_var( $wpdb->prepare( "
+                SELECT local_avatar_id FROM $avatar_table
+                WHERE email = %s", $email ) );
+            dntsc_debug( "got local avatar id from database based on email address ${email}" );
+            # we don't need a URL if we have a local avatar id, leave $url unset
         }
+    } else {
+        $email = 'unknown@gravatar.com';
     }
 
-    dntsc_debug( "finding avatar for ${email}, ${url}" );
-
-    if ( preg_match( "/\/" . $dntsc_options['callback'] .
-            "\/?\?step=profile&amp;id=([0-9a-f]+)$/",
-            $url, $match ) ) {
-        $local_avatar_id = $match[1];
+    if ( $url ) {
+        # See if the URL contains a local avatar id
+        if ( preg_match( "/\/" . $dntsc_options['callback'] .
+                "\/?\?step=profile&amp;id=([0-9a-f]+)$/",
+                $url, $match ) ) {
+            $local_avatar_id = $match[1];
+            dntsc_debug( "got local avatar id from URL: ${url}" );
+        }
     } else {
-        dntsc_debug( 'URL did not contain local avatar id, checking database' );
-        $avatar_table = $wpdb->prefix . 'dntsc_avatar';
+        $url = '#';
+    }
+
+    dntsc_debug( "finding avatar for email=${email} url=${url} local_avatar_id=${local_avatar_id}" );
+
+    if ( ! $local_avatar_id ) {
+        dntsc_debug( "don't have a local avatar id, checking database" );
         $local_avatar_id = $wpdb->get_var( $wpdb->prepare( "
             SELECT local_avatar_id FROM $avatar_table
             WHERE service_author_url = %s", $url ) );
@@ -283,7 +295,7 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
                 $userinfo['dntsc_avatar_url'] .= "&amp;r={$rating}";
             }
             $new_url = dntsc_download_avatar_image( $userinfo );
-            if ( ! $new_url ) { return $avatar; }
+            if ( ! $new_url ) { return false; }
             dntsc_debug( "successfully created local id, returning avatar url {$new_url}" );
             $avatar = "<img class='avatar avatar-{$size}' src='{$new_url}' width='{$size}' height='{$size}' style='width:{$size}px;height:{$size}px;' />";
             return $avatar;
@@ -301,8 +313,8 @@ function dntsc_get_avatar( $avatar, $id_or_email, $size = '96', $default = '',
     } else if ( file_exists( $image_filename . '.gif' ) ) {
         $image_file .= '.gif';
     } else {
-        dntsc_error( "avatar not found for local_avatar_id ${local_avatar_id}" );
-        return $avatar;
+        dntsc_error( "avatar file not found for local_avatar_id ${local_avatar_id}" );
+        return false;
     }
 
     $image_url = $dntsc_options['avatar_url'] . $image_file;

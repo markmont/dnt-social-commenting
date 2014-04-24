@@ -144,11 +144,13 @@ function dntsc_activate() {
 
     $table_name = $wpdb->prefix . "dntsc_avatar"; 
     $sql = "CREATE TABLE $table_name (
+        email varchar(255) NOT NULL,
         service_author_url varchar(255) NOT NULL,
         service_avatar_url varchar(255) NOT NULL,
         local_avatar_id varchar(100) NOT NULL,
         updated timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY  (service_author_url),
+        KEY email (email),
         UNIQUE KEY local_avatar_id (local_avatar_id)
         );";
 
