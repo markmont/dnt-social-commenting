@@ -82,6 +82,7 @@ function base64url_decode( $data ) {
 function dntsc_message( $message ) {
 
     global $dntsc_options;
+    global $dntsc_session;
     global $dntsc_service_name;
 
     // Sanitize secrets so they do not appear in the logs:
@@ -94,11 +95,11 @@ function dntsc_message( $message ) {
     }
 
     $info = "DNTSC ";
-    if ( ! empty( $_SESSION['dntsc']['service'] ) ) {
-        $info .= 'service=' . $_SESSION['dntsc']['service'] . ' ';
+    if ( ! empty( $dntsc_session['service'] ) ) {
+        $info .= 'service=' . $dntsc_session['service'] . ' ';
     }
-    if ( ! empty( $_SESSION['dntsc']['userinfo']['dntsc_email'] ) ) {
-        $info .= 'email=' . $_SESSION['dntsc']['userinfo']['dntsc_email'] . ' ';
+    if ( ! empty( $dntsc_session['userinfo']['dntsc_email'] ) ) {
+        $info .= 'email=' . $dntsc_session['userinfo']['dntsc_email'] . ' ';
     }
 
     error_log( $info . $message );
@@ -117,12 +118,66 @@ function dntsc_error( $message ) {
 }
 
 
+function dntsc_destroy_session() {
+
+    global $dntsc_session;
+
+    if ( empty( $dntsc_session['id'] ) ) {
+        dntsc_debug( "can't destroy session without session id" );
+        $dntsc_session = array(); // nuke the in-memory data, at least
+        return;
+    }
+    $t = 'dntsc' . $dntsc_session['id'];
+
+    dntsc_debug( "destroying session: " . $dntsc_session['id'] );
+    $ok = delete_transient( $t );
+    if ( ! $ok ) {
+        dntsc_error( "failed to delete transient " . $t );
+    }
+
+    $dntsc_session = array();
+
+    // We can't unset the session cookie here if we've already started to
+    // render the page.  The cookie will get unset by dntsc_init() the
+    // next time a page is loaded.
+
+}
+
+
+function dntsc_save_session() {
+
+    global $dntsc_session;
+
+    if ( empty( $dntsc_session['id'] ) ) {
+        dntsc_debug( "can't save session without session id" );
+        return;
+    }
+    $t = 'dntsc' . $dntsc_session['id'];
+
+    // If the session is already expired, delete it instead of saving it
+    $now = time();
+    if ( empty( $dntsc_session['expires'] )
+        || $now >= $dntsc_session['expires'] ) {
+        dntsc_destroy_session();
+        return;
+    }
+
+    dntsc_debug( "saving session: " . print_r( $dntsc_session, TRUE ) );
+    $ok = set_transient( $t, $dntsc_session, $dntsc_session['expires'] - $now );
+    if ( ! $ok ) {
+        dntsc_error( "failed to set transient " . $t );
+    }
+
+}
+
+
 function dntsc_get_service() {
 
     global $dntsc_options;
+    global $dntsc_session;
 
-    if ( empty( $_SESSION['dntsc']['service'] ) ) { return NULL; }
-    $service = $_SESSION['dntsc']['service'];
+    if ( empty( $dntsc_session['service'] ) ) { return NULL; }
+    $service = $dntsc_session['service'];
 
     // Make sure the service name is valid
     if ( ! empty( $dntsc_options['service'][$service]['enabled'] )
@@ -131,7 +186,7 @@ function dntsc_get_service() {
     }
 
     dntsc_error( "session contains bad value for service " );
-    $_SESSION['dntsc'] = array();
+    dntsc_destroy_session();
     return NULL;
 
 }
@@ -228,13 +283,47 @@ function dntsc_init() {
 
     global $wp;
     global $dntsc_options;
+    global $dntsc_session;
 
-    if ( ! session_id() ) { session_start(); }
+    $dntsc_session = array();
 
     $options = get_option( 'dntsc_options' );
     if ( $options !== FALSE ) {
        $dntsc_options = array_merge( $dntsc_options, $options );
        dntsc_debug( 'options: ' . print_r( $dntsc_options, TRUE ) );
+    }
+
+    if ( ! empty( $_COOKIE['dntsc'] ) ) {
+        $id = $_COOKIE['dntsc'];
+        $cookie_ok = 1;
+        $now = time();
+        if ( filter_var( $id, FILTER_VALIDATE_REGEXP,
+            array( 'options' => array( 'regexp' => '/^[0-9a-f]{32}$/' ) ) ) ) {
+            $data = get_transient( 'dntsc' . $id );
+            if ( $data !== FALSE ) {
+                $dntsc_session = $data;
+                dntsc_debug( "session: " . print_r( $dntsc_session, TRUE ) );
+                if ( empty( $dntsc_session['expires'] )
+                    || $now >= $dntsc_session['expires'] ) {
+                    dntsc_destroy_session();
+                    $cookie_ok = 0;
+                }
+            } else {
+                dntsc_error( 'could not retrieve transient dntsc' . $id );
+                $cookie_ok = 0;
+            }
+        } else {
+            dntsc_error( 'bad cookie value' );
+            $cookie_ok = 0;
+        }
+        if ( ! $cookie_ok ) {
+            // Unset the cookie, unless we're going to set it to a new value
+            if ( empty( $_REQUEST['step'] ) || $_REQUEST['step'] != 'redirect' ) {
+                // TODO: also check to see that we're at the callback URL path
+                setcookie( 'dntsc', '', time() - 365*86400, COOKIEPATH,
+                    COOKIE_DOMAIN, is_ssl(), TRUE );
+            }
+        }
     }
 
     $wp->add_query_var( $dntsc_options['callback'] );
@@ -336,7 +425,7 @@ function dntsc_profile_redirect() {
     //   <meta http-equiv='refresh' content='0;$url' />
 
     dntsc_debug( "profile: redirecting local avatar id {$local_avatar_id} to ${url}" );
-    session_write_close();
+    dntsc_save_session();
     header( "Refresh: 0;url={$url}", true, 200 );
     exit( 0 );
 
@@ -360,8 +449,9 @@ function dntsc_signout() {
     }
 
     dntsc_debug( "signing out, redirecting to {$url}" );
-    $_SESSION['dntsc'] = array();
-    session_write_close();
+    setcookie( 'dntsc', '', time() - 365*86400, COOKIEPATH,
+        COOKIE_DOMAIN, is_ssl(), TRUE );
+    dntsc_destroy_session();
     wp_redirect( $url );
     exit( 0 );
 
@@ -372,24 +462,30 @@ add_action( 'dntsc_state_redirect', 'dntsc_redirect' );
 function dntsc_redirect() {
 
     global $dntsc_options;
+    global $dntsc_session;
 
-    // Because other plugins or themes may use the session, too, we keep all
-    // of our state in a single session variable.
-    $_SESSION['dntsc'] = array(); // Forget all prior state
+    $dntsc_session = array(); // Forget all prior state
+    $dntsc_session['id'] = bin2hex( openssl_random_pseudo_bytes( 16 ) );
+    // TODO: make cookie name and expiration configurable options
+    setcookie( 'dntsc', $dntsc_session['id'], 0, COOKIEPATH, COOKIE_DOMAIN,
+        is_ssl(), TRUE );
+    // We want the session to expire because having a session may prevent
+    // cached copies of pages from being served to the user's browser.
+    $dntsc_session['expires'] = time() + 24*60*60;
 
     if ( ! empty( $_REQUEST['id'] ) ) {
-        $_SESSION['dntsc']['post_id'] =  0 + (int) $_REQUEST['id'];
+        $dntsc_session['post_id'] =  0 + (int) $_REQUEST['id'];
     }
 
     if ( empty( $_REQUEST['service'] ) ) {
         dntsc_error( 'sign-in-to-comment button did not specify service' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Could not determine which service to use to sign in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200, 'back_link' => true ) );
     }
 
     $state = base64url_encode( openssl_random_pseudo_bytes( 32 ) );
-    $_SESSION['dntsc']['nonce'] = $state;
+    $dntsc_session['nonce'] = $state;
 
     $service = $_REQUEST['service'];
     switch ( $service ) {
@@ -432,17 +528,17 @@ function dntsc_redirect() {
 
         default:
             dntsc_error( 'unknown service set by sign-in-to-comment button' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             wp_die( 'Unknown sign-in service.  Please try a different sign-in button or try again later.',
                 '', array( 'response' => 200, 'back_link' => true ) );
             break;
 
     }
 
-    $_SESSION['dntsc']['service'] = $_REQUEST['service'];
+    $dntsc_session['service'] = $service;
 
     dntsc_debug( "redirecting to {$url}" );
-    session_write_close();
+    dntsc_save_session();
     header( "Location: {$url}", true, 302 );
     exit( 0 );
 
@@ -490,20 +586,22 @@ function dntsc_get_facebook_avatar_url( $url ) {
 
 function dntsc_get_userinfo() {
 
+    global $dntsc_session;
+
     if ( is_user_logged_in() ) { return FALSE; } // Do nothing for WP users
 
-    if ( ! empty( $_SESSION['dntsc']['userinfo']['dntsc_email'] ) ) {
+    if ( ! empty( $dntsc_session['userinfo']['dntsc_email'] ) ) {
         dntsc_debug( 'dntsc_get_userinfo: returning cached results: '
-            . print_r( $_SESSION['dntsc']['userinfo'], TRUE ) );
-        return $_SESSION['dntsc']['userinfo'];
+            . print_r( $dntsc_session['userinfo'], TRUE ) );
+        return $dntsc_session['userinfo'];
     }
 
-    if ( empty( $_SESSION['dntsc']['access_token'] ) ) { return FALSE; }
+    if ( empty( $dntsc_session['access_token'] ) ) { return FALSE; }
 
-    if ( ! empty( $_SESSION['dntsc']['expiry'] ) ) {
-        if ( time() >= $_SESSION['dntsc']['expiry'] ) {
+    if ( ! empty( $dntsc_session['access_token_expires'] ) ) {
+        if ( time() >= $dntsc_session['access_token_expires'] ) {
             dntsc_debug( 'access_token expired, clearing session' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             return FALSE;
         }
     }
@@ -605,7 +703,7 @@ function dntsc_get_userinfo() {
             $avatar_url = FALSE;
             if ( ! empty( $userinfo['id'] ) ) {
                 $id = strtolower( trim ( $userinfo['id'] ) );
-                $url = "https://graph.facebook.com/{$id}/picture?width=256&height=256&redirect=false&return_ssl_resources=1&access_token=" . $_SESSION['dntsc']['access_token'];
+                $url = "https://graph.facebook.com/{$id}/picture?width=256&height=256&redirect=false&return_ssl_resources=1&access_token=" . $dntsc_session['access_token'];
                 $avatar_url = dntsc_get_facebook_avatar_url( $url );
             }
             if ( $avatar_url !== FALSE ) { 
@@ -635,7 +733,7 @@ function dntsc_get_userinfo() {
         return FALSE;
     }
 
-    $_SESSION['dntsc']['userinfo'] = $userinfo;
+    $dntsc_session['userinfo'] = $userinfo;
     return $userinfo;
 
 }
@@ -652,7 +750,7 @@ function dntsc_footer_script() {
 
     $userinfo = dntsc_get_userinfo();
     if ( $userinfo === FALSE ) {
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return;
     }
 
@@ -699,7 +797,7 @@ function dntsc_comment_info( $comment_post_ID ) {
 
     $userinfo = dntsc_get_userinfo();
     if ( $userinfo === FALSE ) {
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return;
     }
 
@@ -712,7 +810,7 @@ function dntsc_comment_info( $comment_post_ID ) {
             WHERE service_author_url = %s", $userinfo['dntsc_url'] ) );
         if ( $local_avatar_id == NULL ) {
             dntsc_debug( 'unable to find local_avatar_id, destroying session' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             return;
         }
         $url = '/' . $dntsc_options['callback'] . '/?step=profile&id=' .

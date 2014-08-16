@@ -32,13 +32,14 @@ function dntsc_oauth_get_request_token( $service )
 {
 
     global $dntsc_options;
+    global $dntsc_session;
 
     dntsc_debug( "obtaining request token for {$service}" );
 
     if ( empty( $dntsc_options['service'][$service]['enabled'] )
         || ! $dntsc_options['service'][$service]['enabled'] ) {
         dntsc_error( 'unable to get request token: unknown service' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Could not determine which service to use to sign in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200, 'back_link' => true ) );
     }
@@ -55,7 +56,7 @@ function dntsc_oauth_get_request_token( $service )
 
         default:
             dntsc_error( 'unable to get request token: unknown service' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             wp_die( 'Could not determine which service to use to sign in.  Please try a different sign-in button or try again later.',
                 '', array( 'response' => 200, 'back_link' => true ) );
             break;
@@ -82,7 +83,7 @@ function dntsc_oauth_get_request_token( $service )
     if ( is_wp_error( $response ) ) {
         dntsc_error( 'unable to obtain request token: '
             . $response->get_error_message() );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service you are trying to sign in to.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200, 'back_link' => true ) );
     }
@@ -90,7 +91,7 @@ function dntsc_oauth_get_request_token( $service )
     if ( wp_remote_retrieve_response_code( $response ) != 200 ) {
         dntsc_error( 'unable to obtain request token: got HTTP response code '
             . wp_remote_retrieve_response_code( $response ) );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service you are trying to sign in to.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200, 'back_link' => true ) );
     }
@@ -102,9 +103,8 @@ function dntsc_oauth_get_request_token( $service )
     dntsc_debug( 'got request token: ' .  print_r( $request_token, TRUE ) );
 
     $token = $request_token['oauth_token'];
-    $_SESSION['dntsc']['oauth_token'] = $token;
-    $_SESSION['dntsc']['oauth_token_secret'] =
-        $request_token['oauth_token_secret'];
+    $dntsc_session['oauth_token'] = $token;
+    $dntsc_session['oauth_token_secret'] = $request_token['oauth_token_secret'];
 
     $redirect_url .= '?oauth_token=' . $token;
 
@@ -119,23 +119,23 @@ add_action( 'dntsc_state_authenticatedheavy', 'dntsc_heavy_authenticated' );
 function dntsc_heavy_authenticated() {
 
     global $dntsc_options;
+    global $dntsc_session;
 
     dntsc_debug( "got post-authentication callback from heavyweight oauth sign-in service\n"
-        . "  $_REQUEST data: " . print_r( $_REQUEST, TRUE ) . "\n"
-        . "  $_SESSION data: " . print_r( $_SESSION, TRUE ) );
+        . "  $_REQUEST data: " . print_r( $_REQUEST, TRUE ) . "\n" );
 
-    unset( $_SESSION['dntsc']['nonce'] );  // we don't use this
+    unset( $dntsc_session['nonce'] );  // we don't use this
 
     $service = dntsc_get_service();
     if ( empty( $_REQUEST['oauth_token'] )
         || empty( $_REQUEST['oauth_verifier'] )
-        || empty( $_SESSION['dntsc']['oauth_token'] )
+        || empty( $dntsc_session['oauth_token'] )
         || ! $service
-        || $_SESSION['dntsc']['oauth_token'] !== $_REQUEST['oauth_token'] ) {
+        || $dntsc_session['oauth_token'] !== $_REQUEST['oauth_token'] ) {
         // TODO: make sure the token and verifier contain only the characters we are expecting
         // TODO: re-start the auth, preserving the URL the user was orignally trying to get to
         dntsc_error( 'bad session, dying' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Bad session, please try again or try a differernt sign-in button.',
             '', array( 'response' => 200 ) );
     }
@@ -149,7 +149,7 @@ function dntsc_heavy_authenticated() {
 
         default:
             dntsc_error( 'unable to get access token: unknown service' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             wp_die( 'Could not determine which service was used to sign in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
             break;
@@ -161,8 +161,8 @@ function dntsc_heavy_authenticated() {
     $consumer = new OAuthConsumer( $dntsc_options['service'][$service]['id'],
         $dntsc_options['service'][$service]['secret'] );
     $sign_method = new OAuthSignatureMethod_HMAC_SHA1();
-    $token = new OAuthConsumer( $_SESSION['dntsc']['oauth_token'],
-        $_SESSION['dntsc']['$oauth_token_secret'] );
+    $token = new OAuthConsumer( $dntsc_session['oauth_token'],
+        $dntsc_session['$oauth_token_secret'] );
 
     $params = array();
     $params['oauth_verifier'] = $_REQUEST['oauth_verifier'];
@@ -180,7 +180,7 @@ function dntsc_heavy_authenticated() {
     if ( is_wp_error( $response ) ) {
         dntsc_error( 'unable to obtain access_token: '
             . $response->get_error_message() );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service that signed you in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
     }
@@ -190,7 +190,7 @@ function dntsc_heavy_authenticated() {
     if ( wp_remote_retrieve_response_code( $response ) != 200 ) {
         dntsc_error( 'unable to obtain access_token: got HTTP response code '
             . wp_remote_retrieve_response_code( $response ) );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service that signed you in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
     }
@@ -199,18 +199,18 @@ function dntsc_heavy_authenticated() {
         $response ) );
     dntsc_debug( 'got access token: ' .  print_r( $access_token, TRUE ) );
 
-    $_SESSION['dntsc']['access_token'] = $access_token;
-    unset( $_SESSION['dntsc']['oauth_token'] );
-    unset( $_SESSION['dntsc']['oauth_token_secret'] );
+    $dntsc_session['access_token'] = $access_token;
+    unset( $dntsc_session['oauth_token'] );
+    unset( $dntsc_session['oauth_token_secret'] );
 
-    if ( isset( $_SESSION['dntsc']['post_id'] ) ) {
-        $url = get_permalink( $_SESSION['dntsc']['post_id'] );
+    if ( isset( $dntsc_session['post_id'] ) ) {
+        $url = get_permalink( $dntsc_session['post_id'] );
         if ( $url ) {
             $url .= '#respond';
         } else {
             $url = home_url();
         }
-        unset( $_SESSION['dntsc']['post_id'] );
+        unset( $dntsc_session['post_id'] );
     } else {
         $url = home_url();
     }
@@ -223,13 +223,13 @@ function dntsc_heavy_authenticated() {
     $userinfo = dntsc_get_userinfo();
     if ( $userinfo === FALSE ) {
         dntsc_error( "Couldn't get all necessary user information, dying." );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( "The service you successfully logged in with didn't provide all of the information needed to leave comments (full name, email address, URL).  Please use a different sign-in button or try again later.</p><p><a href=\"$url\">&laquo; Back</a>",
             '', array( 'response' => 200 ) );
     }
 
     dntsc_debug( "redirecting to {$url}" );
-    session_write_close();
+    dntsc_save_session();
     wp_redirect( $url );
     exit( 0 );
 
@@ -240,6 +240,7 @@ function dntsc_heavy_get_userinfo()
 {
 
     global $dntsc_options;
+    global $dntsc_session;
 
     $service = dntsc_get_service();
 
@@ -252,20 +253,20 @@ function dntsc_heavy_get_userinfo()
 
         default:
             dntsc_error( 'unable to get user information: unknown service' );
-            $_SESSION['dntsc'] = array();
+            dntsc_destroy_session();
             return FALSE;
             break;
 
     }
 
-    $access_token = $_SESSION['dntsc']['access_token'];
+    $access_token = $dntsc_session['access_token'];
 
     $consumer = new OAuthConsumer( $dntsc_options['service'][$service]['id'],
         $dntsc_options['service'][$service]['secret'] );
     $sign_method = new OAuthSignatureMethod_HMAC_SHA1();
     $token = new OAuthConsumer(
-        $_SESSION['dntsc']['access_token']['oauth_token'],
-        $_SESSION['dntsc']['access_token']['oauth_token_secret'] );
+        $dntsc_session['access_token']['oauth_token'],
+        $dntsc_session['access_token']['oauth_token_secret'] );
     $params = array();
 
     $request = OAuthRequest::from_consumer_and_token( $consumer,
@@ -281,14 +282,14 @@ function dntsc_heavy_get_userinfo()
     if ( is_wp_error( $response ) ) {
         dntsc_error( 'unable to obtain user information: '
             . $response->get_error_message() );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return FALSE;
     }
 
     if ( wp_remote_retrieve_response_code( $response ) != 200 ) {
         dntsc_error( 'unable to obtain user information: got HTTP response code '
             . wp_remote_retrieve_response_code( $response ) );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return FALSE;
     }
 

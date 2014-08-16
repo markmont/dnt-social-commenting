@@ -29,15 +29,15 @@ add_action( 'dntsc_state_authenticatedlight', 'dntsc_light_authenticated' );
 function dntsc_light_authenticated() {
 
     global $dntsc_options;
+    global $dntsc_session;
 
     dntsc_debug( "got post-authentication callback from sign-in service\n"
-        . "  $_REQUEST data: " . print_r( $_REQUEST, TRUE ) . "\n"
-        . "  $_SESSION data: " . print_r( $_SESSION, TRUE ) );
+        . "  $_REQUEST data: " . print_r( $_REQUEST, TRUE ) . "\n" );
 
     if ( isset( $_REQUEST['error'] ) ) {  // Google and Facebook
         dntsc_error( 'sign-in service returned an authentication error: '
             . $_REQUEST['error'] );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'The service you are attempting to sign in with returned an error, please try another service: ' . esc_html( $_REQUEST['error'] ), '',
             array( 'response' => 200 ) );
     }
@@ -45,12 +45,12 @@ function dntsc_light_authenticated() {
     $service = dntsc_get_service();
     if ( empty( $_REQUEST['code'] )
         || empty( $_REQUEST['state'] )
-        || empty( $_SESSION['dntsc']['nonce'] )
+        || empty( $dntsc_session['nonce'] )
         || ! $service ) {
         // TODO: make sure code contains only the characters we are expecting, although if the nonce/state matches, we presume that the value for code came from github and hence can be trusted
         // TODO: re-start the auth, preserving the URL the user was orignally trying to get to
         dntsc_error( 'bad session, dying' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Bad session, please try again or try a differernt sign-in button.',
             '', array( 'response' => 200 ) );
     }
@@ -67,13 +67,13 @@ function dntsc_light_authenticated() {
             $nonce = $state['state'];
         }
     }
-    if ( $_SESSION['dntsc']['nonce'] !== $nonce ) {
+    if ( $dntsc_session['nonce'] !== $nonce ) {
         dntsc_error( 'incorrect nonce, dying' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Bad session, please try again or try a different sign-in button.',
             '', array( 'response' => 200 ) );
     }
-    unset( $_SESSION['dntsc']['nonce'] );
+    unset( $dntsc_session['nonce'] );
 
 
     // Use the temporary code to obtain an access token:
@@ -128,7 +128,7 @@ function dntsc_light_authenticated() {
     if ( is_wp_error( $response ) ) {
         dntsc_error( 'unable to obtain access_token: '
             . $response->get_error_message() );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service that signed you in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
     }
@@ -138,7 +138,7 @@ function dntsc_light_authenticated() {
     if ( wp_remote_retrieve_response_code( $response ) != 200 ) {
         dntsc_error( 'unable to obtain access_token: got HTTP response code '
             . wp_remote_retrieve_response_code( $response ) );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service that signed you in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
     }
@@ -164,15 +164,15 @@ function dntsc_light_authenticated() {
 
     if ( empty( $data['access_token'] ) ) {
         dntsc_error( 'empty access_token' );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( 'Something went wrong talking to the service that signed you in.  Please try a different sign-in button or try again later.',
             '', array( 'response' => 200 ) );
     }
-    $_SESSION['dntsc']['access_token'] = $data['access_token'];
-    dntsc_debug( 'got access_token: ' .  $_SESSION['dntsc']['access_token'] );
+    $dntsc_session['access_token'] = $data['access_token'];
+    dntsc_debug( 'got access_token: ' .  $dntsc_session['access_token'] );
 
     if ( $expires > 0 ) {
-        $_SESSION['dntsc']['expiry'] = time() + $expires;
+        $dntsc_session['access_token_expires'] = time() + $expires;
     }
 
     // For Facebook only, as of 2013-08-13:
@@ -185,14 +185,14 @@ function dntsc_light_authenticated() {
     // user who they are.  So there is little point in makeing a call to
     // https://graph.facebook.com/debug_token to inspect the access token.
 
-    if ( isset( $_SESSION['dntsc']['post_id'] ) ) {
-        $url = get_permalink( $_SESSION['dntsc']['post_id'] );
+    if ( isset( $dntsc_session['post_id'] ) ) {
+        $url = get_permalink( $dntsc_session['post_id'] );
         if ( $url ) {
             $url .= '#respond';
         } else {
             $url = home_url();
         }
-        unset( $_SESSION['dntsc']['post_id'] );
+        unset( $dntsc_session['post_id'] );
     } else {
         $url = home_url();
     }
@@ -205,14 +205,14 @@ function dntsc_light_authenticated() {
     $userinfo = dntsc_get_userinfo();
     if ( $userinfo === FALSE ) {
         dntsc_error( "Couldn't get all necessary user information, dying." );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         wp_die( "The service you successfully logged in with didn't provide all of the information needed to leave comments (full name, email address, URL).  Please use a different sign-in button or try again later.</p><p><a href=\"$url\">&laquo; Back</a>",
             '', array( 'response' => 200 ) );
     }
 
 
     dntsc_debug( "redirecting to {$url}" );
-    session_write_close();
+    dntsc_save_session();
     wp_redirect( $url );
     exit( 0 );
 
@@ -222,8 +222,10 @@ function dntsc_light_authenticated() {
 function dntsc_light_get_userinfo()
 {
 
+    global $dntsc_session;
+
     $service = dntsc_get_service();
-    $access_token = $_SESSION['dntsc']['access_token'];
+    $access_token = $dntsc_session['access_token'];
 
     switch ( $service ) {
 
@@ -255,14 +257,14 @@ function dntsc_light_get_userinfo()
     if ( is_wp_error( $response ) ) {
         dntsc_error( 'unable to obtain user information: '
             . $response->get_error_message() );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return FALSE;
     }
 
     if ( wp_remote_retrieve_response_code( $response ) != 200 ) {
         dntsc_error( 'unable to obtain user information: got HTTP response code '
             . wp_remote_retrieve_response_code( $response ) );
-        $_SESSION['dntsc'] = array();
+        dntsc_destroy_session();
         return FALSE;
     }
 
