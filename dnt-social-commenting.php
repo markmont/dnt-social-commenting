@@ -334,6 +334,59 @@ function dntsc_init() {
 }
 
 
+add_filter( 'wp_headers', 'dntsc_set_http_headers', 111, 1 );
+function dntsc_set_http_headers( $headers ) {
+
+    global $dntsc_session;
+
+    // Do we want to indicate that this page should not be cached?
+    $add_nocache = 0;
+    if ( ! empty( $_REQUEST['step'] ) && $_REQUEST['step'] == 'redirect' ) {
+        // TODO: verify callback URL path too
+        $add_nocache = 1;
+    }
+    if ( ! empty( $dntsc_session['id'] ) ) {
+        $add_nocache = 2;
+    }
+
+    // Would we be overriding something more restrictive?  If so, don't.
+    $do_remove = 0;
+    foreach ( headers_list() as $h ) {
+        if ( stripos( $h, 'Cache-Control' ) === 0 ) {
+            if ( !empty( $headers['Cache-Control'] ) ) {
+                // If set in both places, $headers will win, so skip
+                $do_remove = 1;
+                continue;
+            }
+            if ( stripos( $h, 'no-cache' ) !== FALSE 
+                || stripos( $h, 'private' ) !== FALSE 
+                || stripos( $h, 'no-store' ) !== FALSE ) {
+                $add_nocache = -1;
+            }
+        }
+    }
+    if ( $do_remove ) {
+        @header_remove( 'Cache-Control' );
+    }
+    if ( !empty( $headers['Cache-Control'] ) &&
+        ( stripos( $headers['Cache-Control'], 'no-cache' ) !== FALSE 
+                || stripos( $headers['Cache-Control'], 'private' ) !== FALSE 
+                || stripos( $headers['Cache-Control'], 'no-store' ) !== FALSE ) ) {
+        $add_nocache = -2;
+    }
+
+    if ( $add_nocache > 0 ) {
+        $headers['Cache-Control'] = 'no-cache, must-revalidate, max-age=0';
+        dntsc_debug( "indicating page must not be cached (reason {$add_nocache})" );
+    } else {
+        dntsc_debug( "passing on page caching decision (reason {$add_nocache})" );
+    }
+    
+    return $headers;
+
+}
+
+
 add_action( 'template_redirect', 'dntsc_callback_catcher' );
 function dntsc_callback_catcher() {
 

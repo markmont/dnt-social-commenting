@@ -198,6 +198,18 @@ function dntsc_download_avatar_image( $userinfo ) {
         # Do nothing
     }
 
+    // Purge old versions from the cache.  This is specific to the
+    // Catseye Cache plugin.
+    if ( function_exists( 'ccache_purge_pattern' ) ) {
+        ccache_purge_pattern( '^' . $dntsc_options['avatar_url'] .
+            $image_file . '\.' );
+        // Do purge right away rather than on shutdown, to ensure that the
+        // purge is complete by the time the user's browser reqeusts the
+        // image for this page.  (Assuming that it's not cached in their
+        // local browser cache, too.)
+        ccache_do_purge();
+    }
+
     $image_filename = $dntsc_options['avatar_dir'] . $image_file . $extension;
     dntsc_debug( "writing avatar to {$image_filename}" );
     $fp = fopen( $image_filename, 'w' );
